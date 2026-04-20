@@ -53,7 +53,7 @@ packageVersion("broom")
 ```{r load  binomial data }
 # set working directory 
 # load bimonial data 
-setwd("/Users/abbyrobinson/Desktop/Density Project/Density_Dependent_Dynamics_GitHub_Repo/data_files") 
+setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo") 
 density_data <- read.csv("density_dependence_binomial_data.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
 density_data[is.na(density_data)] <- "N" 
 head(density_data)
@@ -154,7 +154,7 @@ plot_1 <- plot_model(model3, title = "", type = "pred",
   scale_y_continuous(limits = c(0, 0.025), breaks = seq(0, 0.025, by = 0.005))
 
 # save output as PDF file 
-density_glmer_fig <- ggsave(plot_1, file = "/Users/abbyrobinson/Desktop/Density Dependent Dynamics Project/Density_Dependent_Dynamics_GitHub_Repo/figures/density_glmer_fig.pdf", width=15, height=10, units=c("in"), useDingbats=FALSE)
+density_glmer_fig <- ggsave(plot_1, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/density_glmer_fig.pdf", width=15, height=10, units=c("in"), useDingbats=FALSE)
 ```
 
 ```{r run analysis on unfiltered data}
@@ -293,7 +293,7 @@ density_surv_plot = species_plot$plot + density_plot$plot + unpalatability_plot$
   plot_layout(ncol = 1)
 
 # save output as PDF file 
-density_surv_plot <- ggsave(density_surv_plot, file = "/Users/abbyrobinson/Desktop/Density Dependent Dynamics Project/Density_Dependent_Dynamics_GitHub_Repo/figures/density_fig.pdf", width=10, height=15, units=c("in"), useDingbats=FALSE)
+density_surv_plot <- ggsave(density_surv_plot, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/density_fig.pdf", width=10, height=15, units=c("in"), useDingbats=FALSE)
 ```
 
 
