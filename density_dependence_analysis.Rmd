@@ -1,0 +1,300 @@
+---
+title: "density_dependence_analysis"
+author: "Abby Robinson"
+date: "2026-01-27"
+output: html_document
+---
+
+```{r load packages}
+##Install & load packages 
+library(curl)
+library(ggplot2)
+library(lme4)
+library(lmtest)
+library(statmod)
+library(emmeans)
+library(car)
+library(glmmTMB)
+library(dplyr)
+library(DHARMa)
+library(performance)
+library(sjPlot)
+library(sjmisc)
+library(survival)
+library(coxme)
+library(survminer)
+library(jstable)
+library(broom)
+
+# get R version 
+R.version.string
+
+#get package version
+packageVersion("curl")
+packageVersion("ggplot2")
+packageVersion("lme4")
+packageVersion("lmtest")
+packageVersion("statmod")
+packageVersion("emmeans")
+packageVersion("car")
+packageVersion("glmmTMB")
+packageVersion("dplyr")
+packageVersion("DHARMa")
+packageVersion("performance")
+packageVersion("sjPlot")
+packageVersion("sjmisc")
+packageVersion("survival")
+packageVersion("coxme")
+packageVersion("survminer")
+packageVersion("jstable")
+packageVersion("broom")
+```
+
+```{r load  binomial data }
+# set working directory 
+# load bimonial data 
+setwd("/Users/abbyrobinson/Desktop/Density Project/Density_Dependent_Dynamics_GitHub_Repo/data_files") 
+density_data <- read.csv("density_dependence_binomial_data.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
+density_data[is.na(density_data)] <- "N" 
+head(density_data)
+```
+
+```{r filter data}
+
+##identify and remove sites that experienced no attacks
+sites_attacks <- aggregate(x=density_data$attacks, by= list(density_data$site), FUN=sum)
+colnames(sites_attacks) <- c("site", "total_attacks")
+sites_attacks <- subset(sites_attacks, total_attacks > 0)
+
+sites_attacks$site
+
+density_data_filtered <- subset(density_data, site %in% sites_attacks$site)
+
+str(density_data_filtered)
+density_data_filtered$unpalatability_treatment <- as.factor(density_data_filtered$unpalatability_treatment)
+density_data_filtered$density_treatment <- as.factor(density_data_filtered$density_treatment)
+density_data_filtered$species <- as.factor(density_data_filtered$species)
+
+# Define new labels as a named vector
+density_data_filtered$species <- factor(density_data_filtered$species, levels = c("iphiclus", "serpa", "junonia"),
+                  labels = c("A. iphiclus (Model)", "A. serpa (Mimic)", "J. evarete (Control)"))
+
+density_data_filtered$density_treatment <- factor(density_data_filtered$density_treatment, 
+                                                             levels = c("low", "high"))
+density_data_filtered$unpalatability_treatment <- factor(density_data_filtered$unpalatability_treatment, 
+                                                             levels = c("no", "yes"))
+```
+
+```{r model selection}
+## full model 
+model1 <- glmer(attacks ~ species*unpalatability_treatment*density_treatment + (1 | site), 
+               data = density_data_filtered, 
+               family = binomial(link = "logit"))
+check_convergence(model1)
+check_singularity(model1)
+summary(model1)
+Anova(model1)
+
+## reduce model via backwards model selection 
+model2 <- glmer(attacks ~ species + unpalatability_treatment*density_treatment + (1 | site), 
+               data = density_data_filtered, 
+               family = binomial(link = "logit"))
+check_convergence(model2)
+check_singularity(model2)
+summary(model2)
+Anova(model2)
+
+model3 <- glmer(attacks ~ species + unpalatability_treatment + density_treatment + (1 | site), 
+               data = density_data_filtered, 
+               family = binomial(link = "logit"))
+check_convergence(model3)
+check_singularity(model3)
+summary(model3)
+Anova(model3)
+
+anova(model1, model2, model3)
+```
+
+```{r check model residuals}
+##check model assumptions and residuals 
+model3_sim <- simulateResiduals(fittedModel = model3, plot = T)
+
+testUniformity(model3_sim) 
+testOutliers(model3_sim)
+testDispersion(model3_sim) 
+testZeroInflation(model3_sim) 
+```
+
+```{r post hoc test and figures}
+post_hoc <- emmeans(model3, pairwise ~  species, adjust="holm")
+
+## plot model 
+sjPlot::set_theme(
+  base = theme_bw(),
+  axis.title.size = 2,
+  axis.textsize = 1.5,
+  legend.size = 1.5,
+  legend.title.size = 1.5,
+  geom.label.size = 1, 
+)
+
+
+plot_1 <- plot_model(model3, title = "", type = "pred", 
+                     terms = c("density_treatment", "unpalatability_treatment", "species"), 
+           axis.title = c("Density", "Attack Rate"),
+           dodge = 0.4,
+           ci.lvl=0.95, 
+           dot.size = 5,
+           line.size = 2,
+           show.p = TRUE,
+           legend.title = "Unpalatability") +
+  scale_color_manual(name = "Unpalatability", 
+                     labels = c("No Bitrex", "Bitrex"),
+                     values = c("#FF5733", "#154360")) + 
+  scale_y_continuous(limits = c(0, 0.025), breaks = seq(0, 0.025, by = 0.005))
+
+# save output as PDF file 
+density_glmer_fig <- ggsave(plot_1, file = "/Users/abbyrobinson/Desktop/Density Dependent Dynamics Project/Density_Dependent_Dynamics_GitHub_Repo/figures/density_glmer_fig.pdf", width=15, height=10, units=c("in"), useDingbats=FALSE)
+```
+
+```{r run analysis on unfiltered data}
+str(density_data)
+density_data$unpalatability_treatment <- as.factor(density_data$unpalatability_treatment)
+density_data$density_treatment <- as.factor(density_data$density_treatment)
+density_data$species <- as.factor(density_data$species)
+
+model4 <- glmer(attacks ~ species + unpalatability_treatment + density_treatment + (1 | site), 
+               data = density_data, 
+               family = binomial(link = "logit"))
+check_convergence(model4)
+check_singularity(model4)
+summary(model4)
+Anova(model4)
+
+post_hoc2 <- emmeans(model4, pairwise ~  species, adjust="holm")
+
+## plot model 
+sjPlot::set_theme(
+  base = theme_bw(),
+  axis.title.size = 2,
+  axis.textsize = 1.5,
+  legend.size = 1.5,
+  legend.title.size = 1.5,
+  geom.label.size = 1, 
+)
+
+
+plot_1 <- plot_model(model4, title = "", type = "pred", 
+                     terms = c("density_treatment", "unpalatability_treatment", "species"), 
+           axis.title = c("Density", "Attack Rate"),
+           dodge = 0.4,
+           dot.size = 3,
+           line.size = 1.5,
+           show.p = TRUE,
+           legend.title = "Unpalatability") +
+  scale_color_manual(name = "Unpalatability", 
+                     labels = c("No Bitrex", "Bitrex"),
+                     values = c("#FF5733", "#154360")) + 
+  scale_y_continuous(limits = c(0, 0.025), breaks = seq(0, 0.025, by = 0.005))
+
+```
+
+```{r survival analysis}
+## test hypothesis 2 
+fit1 <- coxme(Surv(experimental_day, attacks) ~ species*density_treatment*unpalatability_treatment + (1|site), density_data_filtered)
+summary(fit1)
+Anova(fit1)
+
+fit2 <- coxme(Surv(experimental_day, attacks) ~ species + density_treatment*unpalatability_treatment + (1|site), density_data_filtered)
+summary(fit2)
+Anova(fit2)
+
+fit3 <- coxme(Surv(experimental_day, attacks) ~ species + density_treatment + unpalatability_treatment + (1|site), density_data_filtered)
+summary(fit3)
+Anova(fit3)
+
+
+fit4 <- coxme(Surv(experimental_day, attacks) ~ species*density_treatment + unpalatability_treatment + (1|site), density_data_filtered)
+summary(fit4)
+Anova(fit4)
+coxme.display(fit3)
+
+fit5 <- coxme(Surv(experimental_day, attacks) ~ species + density_treatment + strata(unpalatability_treatment) + (1|site), density_data_filtered)
+summary(fit5)$coef
+Anova(fit5)
+
+anova(fit1, fit2, fit3, fit4, fit5)
+
+fit5_zph <- cox.zph(fit5)
+
+par(mfrow=c(2,3))
+plot(fit5_zph)
+
+
+
+
+#pairwise comparisons
+post_hoc4 <- emmeans(fit3, pairwise ~  species, adjust="holm")
+pairwise_comps <- pairwise_survdiff(Surv(experimental_day, attacks) ~ 
+                                      species, 
+                  data = density_data_filtered, 
+                  p.adjust.method = "bonferroni")
+
+## plot data 
+
+species_surv_fit <- survfit(Surv(experimental_day, attacks) ~ species, 
+                            data = density_data_filtered)
+density_surv_fit <- survfit(Surv(experimental_day, attacks) ~ density_treatment, data = density_data_filtered)
+unpalatability_surv_fit <- survfit(Surv(experimental_day, attacks) ~ strata(unpalatability_treatment), 
+                            data = density_data_filtered)
+
+species_plot <- ggsurvplot(species_surv_fit,
+                   data=density_data_filtered,
+                   short.panel.labs = TRUE,
+                   pval = TRUE, 
+                   palette = alpha(c("red", "orange", "blue"), c(1, 1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   size = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+density_plot <- ggsurvplot(density_surv_fit,
+                   data=density_data_filtered,
+                   pval = TRUE, 
+                   palette = alpha(c("orange", "blue"), c(1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   size = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+unpalatability_plot <- ggsurvplot(unpalatability_surv_fit,
+                   data=density_data_filtered,
+                   pval = TRUE, 
+                   palette = alpha(c("orange", "blue"), c(1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   linewidth = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+library(patchwork)
+density_surv_plot = species_plot$plot + density_plot$plot + unpalatability_plot$plot + 
+  plot_layout(ncol = 1)
+
+# save output as PDF file 
+density_surv_plot <- ggsave(density_surv_plot, file = "/Users/abbyrobinson/Desktop/Density Dependent Dynamics Project/Density_Dependent_Dynamics_GitHub_Repo/figures/density_fig.pdf", width=10, height=15, units=c("in"), useDingbats=FALSE)
+```
+
+
+
