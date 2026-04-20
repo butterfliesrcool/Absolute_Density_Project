@@ -54,7 +54,7 @@ packageVersion("broom")
 # set working directory 
 # load bimonial data 
 setwd("/Users/...") 
-density_data <- read.csv("density_dependence_binomial_data_intervals.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
+density_data <- read.csv("density_dependence_binomial_data.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
 density_data[is.na(density_data)] <- "N" 
 head(density_data)
 ```
