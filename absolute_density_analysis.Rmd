@@ -112,6 +112,7 @@ library(broom)
 R.version.string
 
 #get package version
+R.version.string
 packageVersion("curl")
 packageVersion("ggplot2")
 packageVersion("lme4")
@@ -135,13 +136,13 @@ packageVersion("broom")
 ```{r load data files }
 # set working directory 
 # load bimonial dataset with unique facsimile numbers (1-9000)
-setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo") 
+setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/data_files") 
 density_data <- read.csv("density_data_fac_no.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
 density_data[is.na(density_data)] <- "N" 
 head(density_data)
 
 ## load file with additional site details 
-setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo") 
+setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/data_files") 
 la_selva <- read.csv("la_selva_site_details_simple.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
 head(la_selva)
 ```
