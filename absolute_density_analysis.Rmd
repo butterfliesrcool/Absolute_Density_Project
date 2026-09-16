@@ -1,0 +1,565 @@
+---
+title: "absolute_density_analysis"
+author: "Abby Robinson"
+date: "2026-08-17"
+output: html_document
+---
+
+## la selva site map
+```{r load gpkg files for la selva}
+## load packages 
+library(sf)
+library(mapsf)
+library(cartography)
+
+# boundary
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/boundary.gpkg")
+boundary = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/boundary.gpkg", layer = "boundary")   
+
+st_write(obj = boundary, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/boundary.gpkg", 
+         delete_layer = TRUE)
+plot(boundary)
+
+# infrastructure
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/infrastructure.gpkg")
+infrastructure = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/infrastructure.gpkg", layer = "infrastructure")   
+st_write(obj = infrastructure, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/infrastructure.gpkg", 
+         delete_layer = TRUE)
+plot(infrastructure)
+
+# land_use
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/land_use.gpkg")
+land_use = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/land_use.gpkg", layer = "land_use")   
+
+st_write(obj = land_use, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/land_use.gpkg", 
+         delete_layer = TRUE)
+plot(land_use)
+unique(land_use$LANDUSE)
+unique(land_use$SIMPLE_DES)
+
+# streams
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/streams.gpkg")
+streams = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/streams.gpkg", layer = "streams")   
+
+st_write(obj = streams, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/streams.gpkg", 
+         delete_layer = TRUE)
+plot(streams)
+
+# trail_signs
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trail_signs.gpkg")
+trail_signs = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trail_signs.gpkg", layer = "trail_signs")   
+
+st_write(obj = trail_signs, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trail_signs.gpkg", 
+         delete_layer = TRUE)
+plot(trail_signs)
+
+# trails
+st_layers("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trails.gpkg")
+trails = st_read("/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trails.gpkg", layer = "trails")   
+
+st_write(obj = trails, dsn = "/Users/abbyrobinson/Desktop/LAYER_FOR_ABBY/trails.gpkg", 
+         delete_layer = TRUE)
+plot(trails)
+
+unique(land_use$SIMPLE_DES)
+##generate final map showing land use across the field station 
+mf_png(
+  x = land_use,
+  filename = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/map2.png",
+  width = 2000)
+mf_map(x = land_use,
+       var = "SIMPLE_DES",
+       pal =  c("grey75", "palegreen","darkolivegreen", "yellowgreen", "darkgoldenrod4"),
+       type = "typo",
+       leg_title = "Land Use", 
+       leg_title_cex = 2, # Make legend title larger
+       leg_val_cex = 2)
+mf_map(x = trails, pch = 40, cex = 4, col = "black", add = TRUE) 
+mf_map(x = trail_signs, pch = 20, cex = 1, col = "black", add = TRUE) 
+mf_arrow(pos = "topright",
+         cex = 8)
+mf_scale(
+  size = 1,
+  lwd = 4,
+  cex = 7)
+dev.off()
+
+```
+
+# clean binomial data
+```{r load packages for density analysis}
+##Install & load packages 
+library(curl)
+library(ggplot2)
+library(lme4)
+library(lmtest)
+library(statmod)
+library(emmeans)
+library(car)
+library(glmmTMB)
+library(dplyr)
+library(DHARMa)
+library(performance)
+library(sjPlot)
+library(sjmisc)
+library(survival)
+library(coxme)
+library(survminer)
+library(jstable)
+library(broom)
+
+# get R version 
+R.version.string
+
+#get package version
+packageVersion("curl")
+packageVersion("ggplot2")
+packageVersion("lme4")
+packageVersion("lmtest")
+packageVersion("statmod")
+packageVersion("emmeans")
+packageVersion("car")
+packageVersion("glmmTMB")
+packageVersion("dplyr")
+packageVersion("DHARMa")
+packageVersion("performance")
+packageVersion("sjPlot")
+packageVersion("sjmisc")
+packageVersion("survival")
+packageVersion("coxme")
+packageVersion("survminer")
+packageVersion("jstable")
+packageVersion("broom")
+```
+
+```{r load data files }
+# set working directory 
+# load bimonial dataset with unique facsimile numbers (1-9000)
+setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo") 
+density_data <- read.csv("density_data_fac_no.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
+density_data[is.na(density_data)] <- "N" 
+head(density_data)
+
+## load file with additional site details 
+setwd("/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo") 
+la_selva <- read.csv("la_selva_site_details_simple.csv", header = TRUE, sep = ",", na.strings=c("","NA")) 
+head(la_selva)
+```
+
+```{r data cleaning}
+#select columns in la selva data 
+la_selva <- subset(la_selva, select = c(site_total, land_use, trail_type))
+colnames(la_selva) <- c("site", "land_use", "trail_type")
+la_selva$habitat <- paste(la_selva$land_use, la_selva$trail_type, sep = "-")
+
+# merge site details with density data 
+data2 <- merge(density_data, la_selva, by = c("site"))
+
+## group by facsimile number 
+data3 <- aggregate(x=data2$attacks, by= list(data2$fac_number), FUN=sum)
+colnames(data3) <- c("fac_number", "total_attacks")
+data3[order(data3$total_attacks, decreasing = TRUE), ]
+
+data4 <- subset(data2, select = c(site, unpalatability_treatment, density_treatment, species, fac_number, land_use, trail_type, habitat))
+
+data4_clean <- data4[!duplicated(data4$fac_number), ]
+
+## merge with original dataset by fac_number 
+data5 <- merge(data3, data4_clean, by = "fac_number", all.x = TRUE)
+```
+
+```{r check data structure}
+str(data5)
+data5$unpalatability_treatment <- as.factor(data5$unpalatability_treatment)
+data5$density_treatment <- as.factor(data5$density_treatment)
+data5$species <- as.factor(data5$species)
+data5$land_use <- as.factor(data5$land_use)
+data5$trail_type <- as.factor(data5$trail_type)
+data5$habitat <- as.factor(data5$habitat)
+
+# Define new labels as a named vector
+data5$species <- factor(data5$species, levels = c("iphiclus", "serpa", "junonia"),
+                  labels = c("A. iphiclus (Model)", "A. serpa (Mimic)", "J. evarete (Control)"))
+
+data5$density_treatment <- factor(data5$density_treatment, 
+                                  levels = c("low", "high"))
+data5$unpalatability_treatment <- factor(data5$unpalatability_treatment, 
+                                         levels = c("no", "yes"))
+
+```
+
+# model with unfiltered data
+```{r model selection - unfiltered}
+
+m1 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species*density_treatment*unpalatability_treatment +
+                (1|habitat),
+              family = binomial(link = "logit"),
+              data = data5)
+check_convergence(m1)
+check_singularity(m1)
+summary(m1)
+Anova(m1)
+
+m2 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + density_treatment*unpalatability_treatment +
+                (1|habitat),
+              family = binomial(link = "logit"),
+              data = data5)
+check_convergence(m2)
+check_singularity(m2)
+summary(m2)
+Anova(m2)
+
+m3 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + density_treatment + unpalatability_treatment +
+                (1|habitat),
+              family = binomial(link = "logit"),
+              data = data5)
+check_convergence(m3)
+check_singularity(m3)
+summary(m3)
+Anova(m3)
+
+m4 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + unpalatability_treatment +
+                (1|habitat),
+              family = binomial(link = "logit"),
+              data = data5)
+check_convergence(m4)
+check_singularity(m4)
+summary(m4)
+Anova(m4)
+
+anova(m1, m2, m3, m4)
+```
+
+```{r check residuals & posthocs}
+##check model assumptions and residuals 
+m2_sim <- simulateResiduals(fittedModel = m2, plot = T)
+
+testUniformity(m2_sim) 
+testOutliers(m2_sim, type = 'bootstrap')
+testDispersion(m2_sim) # low dispersion parameter - high significance is likely due to large number of data points
+
+## pairwise contrasts
+m2_ph1 <- emmeans(m2, pairwise ~  density_treatment|unpalatability_treatment, adjust="bonferroni")
+m2_ph2 <- emmeans(m2, pairwise ~  species, adjust="bonferroni")
+
+```
+
+# model with filtered data
+```{r filter sites with no attacks}
+##identify and remove sites that experienced no attacks
+sites_attacks <- aggregate(x=data5$total_attacks, by= list(data5$site), FUN=sum)
+colnames(sites_attacks) <- c("site", "total_attacks")
+sites_attacks <- subset(sites_attacks, total_attacks > 0)
+
+## pull out sites that experienced no attacks
+no_attacks <- aggregate(x=data5$total_attacks, by= list(data5$site), FUN=sum)
+colnames(no_attacks) <- c("site", "total_attacks")
+no_attacks <- subset(no_attacks, total_attacks == 0)
+
+sites_attacks$site
+
+density_data_filtered <- subset(data5, site %in% sites_attacks$site)
+
+str(density_data_filtered)
+```
+
+
+```{r model selection - filtered data}
+## comparing random effect structure 
+m1 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species*unpalatability_treatment*density_treatment +
+                  (1 | site),
+  family = binomial(link = "logit"),
+  data = density_data_filtered)
+
+check_convergence(m1)
+check_singularity(m1)
+summary(m1)
+Anova(m1)
+
+m2 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + unpalatability_treatment*density_treatment +
+                  (1 | site),
+  family = binomial(link = "logit"),
+  data = density_data_filtered)
+
+check_convergence(m2)
+check_singularity(m2)
+summary(m2)
+Anova(m2)
+
+m3 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + unpalatability_treatment + density_treatment +
+                  (1 | site),
+  family = binomial(link = "logit"),
+  data = density_data_filtered)
+
+check_convergence(m3)
+check_singularity(m3)
+summary(m3)
+Anova(m3)
+
+m4 <- glmmTMB(cbind(total_attacks, 4-total_attacks) ~ species + unpalatability_treatment +
+                  (1 | site),
+  family = binomial(link = "logit"),
+  data = density_data_filtered)
+
+check_convergence(m4)
+check_singularity(m4)
+summary(m4)
+Anova(m4)
+
+
+anova(m1, m2, m3, m4)
+```
+
+```{r check model residuals}
+##check model assumptions and residuals 
+m3_sim <- simulateResiduals(fittedModel = m3, plot = T)
+
+testUniformity(m3_sim) 
+testOutliers(m3_sim, type = 'bootstrap')
+testDispersion(m3_sim) # low dispersion parameter - high significance is likely due to large number of data points
+
+#post hoc
+m3_ph1 <- emmeans(m3, pairwise ~  species, adjust="bonferroni")
+
+```
+# figure generation
+```{r figures}
+
+## plot model 
+sjPlot::set_theme(
+  base = theme_bw(),
+  axis.title.size = 2,
+  axis.textsize = 1.5,
+  legend.size = 1.5,
+  legend.title.size = 1.5,
+  geom.label.size = 1, 
+)
+
+
+plot_1 <- plot_model(m3, title = "", type = "pred", 
+                     terms = c("density_treatment", "unpalatability_treatment", "species"), 
+           axis.title = c("Density", "Attack Rate"),
+           dodge = 0.4,
+           ci.lvl=0.95, 
+           dot.size = 5,
+           line.size = 2,
+           show.p = TRUE,
+           legend.title = "Unpalatability") +
+  scale_color_manual(name = "Unpalatability", 
+                     labels = c("No Bitrex", "Bitrex"),
+                     values = c("#FF5733", "#154360")) + 
+  scale_y_continuous(limits = c(0, 0.025), breaks = seq(0, 0.025, by = 0.005))
+
+# save output as PDF file 
+density_glmer_fig <- ggsave(plot_1, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/density_glmer_fig.pdf", width=15, height=10, units=c("in"), useDingbats=FALSE)
+```
+
+```{r plot raw data by treatment}
+### unfiltered data - includes no-attack sites 
+data5
+data5$treatment <- paste(data5$density_treatment, data5$unpalatability_treatment, sep = "-")
+
+##reorder treatments
+str(data5)
+data5$treatment <- as.factor(data5$treatment)
+data5$treatment <- factor(data5$treatment, 
+                                         levels = c("low-no", "high-no", "low-yes", "high-yes"))
+
+## summarize counts by treatment
+data6 <- aggregate(x=data5$total_attacks, by= list(data5$treatment, data5$species), FUN=sum)
+colnames(data6) <- c("treatment","species", "total_attacks")
+
+data6 <- aggregate(x=data5$total_attacks, by= list(data5$treatment, data5$species), FUN=mean)
+colnames(data6) <- c("treatment","species", "total_attacks")
+
+#standard error
+data7 <- aggregate(x=data5$total_attacks, by= list(data5$treatment, data5$species), 
+          FUN = function(x) sd(x) / sqrt(length(x)))
+colnames(data7) <- c("treatment","species", "se")
+# When column names are identical in both data frames
+data8 <- merge(data6, data7, by = c("treatment", "species"))
+
+##plot attack rate  by treatment
+plot_2 <- ggplot(data8, aes(x = species, y = total_attacks)) +
+  stat_summary(fun = mean, geom = "point", size = 4) +
+  geom_errorbar(aes(ymin = total_attacks - se, ymax = total_attacks + se), width = 0.3, colour = "black") +
+  facet_wrap(~ treatment, ncol = 2, axes = "all") + 
+  theme_classic(base_size = 25) +
+  theme(
+    strip.background = element_rect(fill = "grey85", color = "black"),
+    strip.text = element_text(color = "black", face = "bold"))
+
+# save output as PDF file 
+attack_rate_fig <- ggsave(plot_2, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/attack_rate_fig.pdf", width=17, height=10, units=c("in"), useDingbats=FALSE)
+
+
+### filtered data - no-attack sites removed 
+density_data_filtered
+density_data_filtered$treatment <- paste(density_data_filtered$density_treatment, 
+                                         density_data_filtered$unpalatability_treatment, sep = "-")
+
+##reorder treatments
+str(density_data_filtered)
+density_data_filtered$treatment <- as.factor(density_data_filtered$treatment)
+density_data_filtered$treatment <- factor(density_data_filtered$treatment, 
+                                         levels = c("low-no", "high-no", "low-yes", "high-yes"))
+
+## summarize counts by treatment
+filtered1 <- aggregate(x=density_data_filtered$total_attacks, 
+                   by= list(density_data_filtered$treatment, density_data_filtered$species), FUN=mean)
+colnames(filtered1) <- c("treatment","species", "attack_rate")
+
+#standard error
+filtered2 <- aggregate(x=density_data_filtered$total_attacks, 
+                       by= list(density_data_filtered$treatment, density_data_filtered$species), 
+                       FUN = function(x) sd(x) / sqrt(length(x)))
+colnames(filtered2) <- c("treatment","species", "se")
+# When column names are identical in both data frames
+filtered3 <- merge(filtered1, filtered2, by = c("treatment", "species"))
+
+##plot attack rate  by treatment
+plot_3 <- ggplot(filtered3, aes(x = species, y = attack_rate)) +
+  stat_summary(fun = mean, geom = "point", size = 4) +
+  geom_errorbar(aes(ymin = attack_rate - se, ymax = attack_rate + se), width = 0.3, colour = "black") +
+  facet_wrap(~ treatment, ncol = 2, axes = "all") + 
+  theme_classic(base_size = 25) +
+  theme(
+    strip.background = element_rect(fill = "grey85", color = "black"),
+    strip.text = element_text(color = "black", face = "bold"))
+
+# save output as PDF file 
+attack_rate_fig_filtered <- ggsave(plot_3, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/attack_rate_fig_filtered.pdf", width=17, height=10, units=c("in"), useDingbats=FALSE)
+```
+
+# Survival analysis
+```{r reformat data for survival}
+## reformat data for survival analysis on filtered data 
+data2
+
+str(data2)
+data2$unpalatability_treatment <- as.factor(data2$unpalatability_treatment)
+data2$density_treatment <- as.factor(data2$density_treatment)
+data2$species <- as.factor(data2$species)
+data2$land_use <- as.factor(data2$land_use)
+data2$trail_type <- as.factor(data2$trail_type)
+data2$habitat <- as.factor(data2$habitat)
+
+# Define new labels as a named vector
+data2$species <- factor(data2$species, levels = c("iphiclus", "serpa", "junonia"),
+                  labels = c("A. iphiclus (Model)", "A. serpa (Mimic)", "J. evarete (Control)"))
+
+data2$density_treatment <- factor(data2$density_treatment, 
+                                  levels = c("low", "high"))
+data2$unpalatability_treatment <- factor(data2$unpalatability_treatment, 
+                                         levels = c("no", "yes"))
+
+##identify and remove sites that experienced no attacks
+sites_attacks <- aggregate(x=data2$attacks, by= list(data2$site), FUN=sum)
+colnames(sites_attacks) <- c("site", "attacks")
+sites_attacks <- subset(sites_attacks, attacks > 0)
+
+## pull out sites that experienced no attacks
+no_attacks <- aggregate(x=data2$attacks, by= list(data2$site), FUN=sum)
+colnames(no_attacks) <- c("site", "attacks")
+no_attacks <- subset(no_attacks, attacks == 0)
+
+sites_attacks$site
+
+surv_data_filtered <- subset(data2, site %in% sites_attacks$site)
+
+str(surv_data_filtered)
+```
+
+```{r survival model selection}
+
+fit1 <- coxme(Surv(experimental_day, attacks) ~ species*density_treatment*unpalatability_treatment + (1|site), surv_data_filtered)
+summary(fit1)
+Anova(fit1)
+
+fit2 <- coxme(Surv(experimental_day, attacks) ~ species + density_treatment*unpalatability_treatment + (1|site), surv_data_filtered)
+summary(fit2)
+Anova(fit2)
+
+fit3 <- coxme(Surv(experimental_day, attacks) ~ species + density_treatment + unpalatability_treatment + (1|site), surv_data_filtered)
+summary(fit3)
+Anova(fit3)
+
+
+fit4 <- coxme(Surv(experimental_day, attacks) ~ species*density_treatment + unpalatability_treatment + (1|site), surv_data_filtered)
+summary(fit4)
+Anova(fit4)
+
+anova(fit1, fit2, fit3, fit4)
+coxme.display(fit3)
+
+#pairwise comparisons
+ph4 <- emmeans(fit3, pairwise ~  species, adjust="bonferroni")
+pairwise_comps <- pairwise_survdiff(Surv(experimental_day, attacks) ~ 
+                                      species, 
+                  data = surv_data_filtered, 
+                  p.adjust.method = "bonferroni")
+
+```
+
+
+```{r plot survival data}
+## plot data 
+
+species_surv_fit <- survfit(Surv(experimental_day, attacks) ~ species, 
+                            data = surv_data_filtered)
+
+density_surv_fit <- survfit(Surv(experimental_day, attacks) ~ density_treatment, 
+                            data = surv_data_filtered)
+
+unpalatability_surv_fit <- survfit(Surv(experimental_day, attacks) ~ unpalatability_treatment, 
+                            data = surv_data_filtered)
+
+species_plot <- ggsurvplot(species_surv_fit,
+                   data=surv_data_filtered,
+                   short.panel.labs = TRUE,
+                   pval = TRUE, 
+                   palette = alpha(c("#FF5733", "#DE8C14", "#154360"), c(1, 1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   size = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+density_plot <- ggsurvplot(density_surv_fit,
+                   data=surv_data_filtered,
+                   pval = TRUE, 
+                   palette = alpha(c( "#DE8C14", "#154360"), c(1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   size = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+unpalatability_plot <- ggsurvplot(unpalatability_surv_fit,
+                   data=surv_data_filtered,
+                   pval = TRUE, 
+                   palette = alpha(c( "#DE8C14", "#154360"), c(1, 1)),
+                   ylim = c(0.975, 1.0),
+                   xlim = c(0, 5),
+                   xlab = "Days",
+                   linewidth = 2,
+                   axes.offset = TRUE, 
+                   ggtheme = theme(axis.title = element_text(size = 10),
+                                   axis.text = element_text(size = 10),
+                                   legend.text = element_text(size = 10)))
+
+library(patchwork)
+density_surv_plot = species_plot$plot + density_plot$plot + unpalatability_plot$plot + 
+  plot_layout(ncol = 1)
+
+# save output as PDF file 
+density_surv_plot2 <- ggsave(density_surv_plot, file = "/Users/abbyrobinson/Desktop/Density Project/Absolute_Density_Project_GitHub_Repo/density_surv_fig2.pdf", width=8, height=15, units=c("in"), useDingbats=FALSE)
+```
+
+

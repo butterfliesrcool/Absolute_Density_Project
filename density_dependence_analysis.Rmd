@@ -60,11 +60,33 @@ head(density_data)
 ```
 
 ```{r filter data}
+## pulling out site numbers for each treatment 
+hd <- subset(density_data, density_treatment == "high")
+ld <- subset(density_data, density_treatment == "low")
 
+hd_bitrex <- subset(hd, unpalatability_treatment == "yes")
+hd_no_bitrex <- subset(hd, unpalatability_treatment == "no")
+
+ld_bitrex <- subset(ld, unpalatability_treatment == "yes")
+ld_no_bitrex <- subset(ld, unpalatability_treatment == "no")
+
+unique(hd_bitrex$site)
+unique(hd_no_bitrex$site)
+unique(ld_bitrex$site)
+unique(ld_no_bitrex$site)
+
+```
+
+```{r}
 ##identify and remove sites that experienced no attacks
 sites_attacks <- aggregate(x=density_data$attacks, by= list(density_data$site), FUN=sum)
 colnames(sites_attacks) <- c("site", "total_attacks")
 sites_attacks <- subset(sites_attacks, total_attacks > 0)
+
+## pull out sites that experienced no attacks
+no_attacks <- aggregate(x=density_data$attacks, by= list(density_data$site), FUN=sum)
+colnames(no_attacks) <- c("site", "total_attacks")
+no_attacks <- subset(no_attacks, total_attacks == 0)
 
 sites_attacks$site
 
@@ -241,6 +263,7 @@ pairwise_comps <- pairwise_survdiff(Surv(experimental_day, attacks) ~
                   p.adjust.method = "bonferroni")
 
 ## plot data 
+
 
 species_surv_fit <- survfit(Surv(experimental_day, attacks) ~ species, 
                             data = density_data_filtered)
