@@ -149,7 +149,7 @@ head(la_selva)
 
 ```{r data cleaning}
 #select columns in la selva data 
-la_selva <- subset(la_selva, select = c(site_total, land_use, trail_type))
+la_selva <- subset(la_selva, select = c(site_number, land_use_broad, trail_type))
 colnames(la_selva) <- c("site", "land_use", "trail_type")
 la_selva$habitat <- paste(la_selva$land_use, la_selva$trail_type, sep = "-")
 
